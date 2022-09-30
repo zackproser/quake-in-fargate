@@ -24,35 +24,16 @@ provider "aws" {
 
 
 # ------------------------------------------------------------------------------
-# CREATE ECS TASK ROLE 
+# CREATE ECS TASK EXECUTION ROLE 
 # ------------------------------------------------------------------------------
-resource "aws_iam_role" "ecs_task_role" {
+
+# The ECS task execution role is the IAM role that enables ECS to start ECS tasks (run containers).
+# For example, when starting a new task, ECS must contact Elastic Container Registry (ECR) to 
+# pull container images, and also needs CloudWatch permissions to write logs to a log group 
+# 
+resource "aws_iam_role" "ecs_task_execution_role" {
   name               = var.app
   assume_role_policy = data.aws_iam_policy_document.task_role_assume_role_policy.json
-}
-
-resource "aws_iam_role_policy_attachment" "ecs_task_role_policy" {
-  role       = aws_iam_role.ecs_task_role.name
-  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
-}
-
-# assigns the app policy
-resource "aws_iam_role_policy" "ecs_task_policy" {
-  name   = var.app
-  role   = aws_iam_role.ecs_task_role.id
-  policy = data.aws_iam_policy_document.ecs_task_policy.json
-}
-
-data "aws_iam_policy_document" "ecs_task_policy" {
-  statement {
-    actions = [
-      "*",
-    ]
-
-    resources = [
-      "*"
-    ]
-  }
 }
 
 # allow role to be assumed by ecs and local saml users (for development)
@@ -67,28 +48,10 @@ data "aws_iam_policy_document" "task_role_assume_role_policy" {
   }
 }
 
-# https://docs.aws.amazon.com/AmazonECS/latest/developerguide/task_execution_IAM_role.html
-resource "aws_iam_role" "ecs_service_role" {
-  name               = "${var.app}-ecs-service-role"
-  assume_role_policy = data.aws_iam_policy_document.assume_role_policy.json
-}
-
-data "aws_iam_policy_document" "assume_role_policy" {
-  statement {
-    actions = ["sts:AssumeRole"]
-
-    principals {
-      type        = "Service"
-      identifiers = ["ecs-tasks.amazonaws.com"]
-    }
-  }
-}
-
-resource "aws_iam_role_policy" "ecs_service_policy" {
-  name   = "${var.app}-service-policy"
-  role   = aws_iam_role.ecs_service_role.id
-  policy = data.aws_iam_policy_document.ecs_task_policy.json
-
+# Here, we opt to use the AWS-managed policy, AmazonECSTaskExecutionRolePolicy 
+resource "aws_iam_role_policy_attachment" "ecs_task_role_policy" {
+  role       = aws_iam_role.ecs_task_execution_role.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
 }
 
 # ---------------------------------------------------------------------------------------------------------------------
@@ -103,14 +66,19 @@ resource "aws_ecs_cluster" "fargate_cluster" {
 # CREATE A FARGATE SERVICE TO RUN MY ECS TASK
 # ---------------------------------------------------------------------------------------------------------------------
 
+# Note, we need only define an ECS task execution role here, which allows ECS to start our tasks (run containers). 
+# We don't need an ECS task role, because our task doesn't additionally write to any other AWS Services (such as S3, 
+# or DynamoDB, for example)
+
+# See "logConfiguration" below for how we configure our ECS task to write its logs to CloudWatch
+
 resource "aws_ecs_task_definition" "app" {
   family                   = var.app
   requires_compatibilities = ["FARGATE"]
   network_mode             = "awsvpc"
-  cpu                      = "2048"
-  memory                   = "4096"
-  execution_role_arn       = aws_iam_role.ecs_service_role.arn
-  task_role_arn            = aws_iam_role.ecs_task_role.arn
+  cpu                      = var.task_cpu
+  memory                   = var.task_memory
+  execution_role_arn       = aws_iam_role.ecs_task_execution_role.arn
 
   container_definitions = <<DEFINITION
 [
@@ -156,7 +124,7 @@ resource "aws_ecs_service" "quake_in_fargate" {
 
   network_configuration {
     security_groups  = [aws_security_group.nsg_task.id]
-    subnets          = var.private_subnets
+    subnets          = data.aws_subnets.selected.ids
     assign_public_ip = true
   }
 
@@ -173,7 +141,7 @@ resource "aws_ecs_service" "quake_in_fargate" {
 
 resource "aws_cloudwatch_log_group" "ecs_task" {
   name              = var.app
-  retention_in_days = 0
+  retention_in_days = var.log_retention_days
 }
 
 # ---------------------------------------------------------------------------------------------------------------------
@@ -181,10 +149,21 @@ resource "aws_cloudwatch_log_group" "ecs_task" {
 # Allow all inbound access on the container port and outbound access
 # ---------------------------------------------------------------------------------------------------------------------
 
+data "aws_vpc" "default" {
+  default = true
+}
+
+data "aws_subnets" "selected" {
+  filter {
+    name   = "vpc-id"
+    values = [data.aws_vpc.default.id]
+  }
+}
+
 resource "aws_security_group" "nsg_task" {
   name        = var.app
   description = "Limit connections from internal resources while allowing ${var.app} task to connect to all external resources"
-  vpc_id      = var.vpc
+  vpc_id      = data.aws_vpc.default.id
 
   tags = var.tags
 }

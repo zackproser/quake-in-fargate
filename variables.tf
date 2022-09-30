@@ -1,15 +1,7 @@
-/*
- * variables.tf
- * Common variables to use in various Terraform files (*.tf)
- */
-
-# The AWS region to use for the dev environment's infrastructure
-# Currently, Fargate is only available in `us-east-1`.
 variable "aws_region" {
   default = "us-east-1"
 }
 
-# Tags for the infrastructure
 variable "tags" {
   type    = map(string)
   default = {}
@@ -21,11 +13,13 @@ variable "app" {
 }
 
 variable "task_memory" {
-  type = string
+  type    = string
+  default = "4096"
 }
 
 variable "task_cpu" {
-  type = string
+  type    = string
+  default = "2048"
 }
 
 variable "image" {
@@ -58,24 +52,9 @@ variable "lb_protocol" {
   default = "TCP"
 }
 
-# Network configuration
-
-# The VPC to use for the Fargate cluster
-variable "vpc" {
-  type = string
-}
-
-# The private subnets, minimum of 2, that are a part of the VPC(s)
-variable "private_subnets" {
-  type    = list(string)
-  default = []
-}
-
-# The public subnets, minimum of 2, that are a part of the VPC(s)
-variable "public_subnets" {
-}
-
-locals {
-  target_subnets = (var.internal == true ? var.private_subnets : var.public_subnets)
+# Logs 
+variable "log_retention_days" {
+  type    = number
+  default = 7
 }
 
