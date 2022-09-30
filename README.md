@@ -2,6 +2,8 @@
 
 This is a companion repository to this [Tutorial](https://medium.com/@zackproser/how-to-run-a-quake-server-in-an-aws-fargate-task-aac75c3ab81f). 
 
+![](./docs/quake-in-fargate-demo.webp)
+
 [![Run a Quake Server in ECS Fargate - Click to watch Demo](./docs/quake-in-fargate-demo.webp)](http://www.youtube.com/watch?v=UzNHrmRtKzg "Video Title")
 
 Run a Quake 3 Arena server as a Fargate Task for fun and learning. This repository includes working Terraform and a Dockerfile to allow you to follow along with the Quake in Fargate tutorial published here. 
